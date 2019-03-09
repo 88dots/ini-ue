@@ -19,7 +19,7 @@ var i = require("../")
     + 'ar=three'+eol
     + 'ar=this is included'+eol
     + 'br=warm'+eol
-    + 'eq=\"eq=eq\"'+eol
+    + 'eq=eq=eq'+eol
     + ''+eol
     + '[a]'+eol
     + 'av=a val'+eol
@@ -81,7 +81,7 @@ var i = require("../")
     + 'ar[]=three'+eol
     + 'ar[]=this is included'+eol
     + 'br=warm'+eol
-    + 'eq=\"eq=eq\"'+eol
+    + 'eq=eq=eq'+eol
     + ''+eol
     + '[a]'+eol
     + 'av=a val'+eol
@@ -159,13 +159,13 @@ var i = require("../")
     + 'value = 10'+eol
 
 test("decode from file", function (t) {
-  var d = i.decode(data)
+  var d = i.decode(data, {sectionSeperator: '.'})
   t.deepEqual(d, expectD)
   t.end()
 })
 
 test("encode from data. isArray=true", function (t) {
-  var e = i.encode(i.decode(expectE), { isArray: true })
+  var e = i.encode(i.decode(expectE, {sectionSeperator: '.'}), { sectionSeperator: '.', isArray: true })
   t.deepEqual(e, expectE)
 
   var obj = { log: { type: 'file', level: { label: 'debug', value: 10 } } }
@@ -177,7 +177,7 @@ test("encode from data. isArray=true", function (t) {
 })
 
 test("encode from data. isArray=false", function (t) {
-  var e = i.encode(i.decode(expectI), { isArray: false })
+  var e = i.encode(i.decode(expectE, {sectionSeperator: '.'}), { sectionSeperator: '.', isArray: false })
   t.deepEqual(e, expectIisArray)
 
   var obj = { log: { type: 'file', level: { label: 'debug', value: 10 } } }

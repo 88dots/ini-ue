@@ -15,29 +15,34 @@ function encode (obj, opt) {
     opt = {
       section: opt,
       whitespace: false,
-      isArray: true
+      isArray: true,
+      unsafe: false,
+      sectionSeperator: '*'
     }
   } else {
     opt = opt || {}
-    opt.whitespace = opt.whitespace === true
-    opt.isArray = opt.isArray === true
+    opt.whitespace = opt.hasOwnProperty('whitespace') ? opt.whitespace : false
+    opt.isArray = opt.hasOwnProperty('isArray') ? opt.isArray : true
+    opt.unsafe = opt.hasOwnProperty('unsafe') ? opt.unsafe : false
+    opt.sectionSeperator = opt.hasOwnProperty('sectionSeperator') ? opt.sectionSeperator : '*'
   }
 
   var separator = opt.whitespace ? ' = ' : '='
+
   Object.keys(obj).forEach(function (k, _, __) {
     var val = obj[k]
     if (val && Array.isArray(val)) {
       val.forEach(function (item) {
         if (opt.isArray) {
-          out += safe(k + '[]') + separator + safe(item) + eol
+          out += safe(k + '[]') + separator + safeVal(item) + eol
         } else {
-          out += safe(k) + separator + safe(item) + eol
+          out += safe(k) + separator + (opt.unsafe ? item : safeVal(item)) + eol
         }
       })
     } else if (val && typeof val === 'object') {
       children.push(k)
     } else {
-      out += safe(k) + separator + safe(val) + eol
+      out += safe(k) + separator + (opt.unsafe ? val : safeVal(val)) + eol
     }
   })
 
@@ -46,12 +51,14 @@ function encode (obj, opt) {
   }
 
   children.forEach(function (k, _, __) {
-    var nk = dotSplit(k).join('\\.')
+    var nk = splitSections(k, opt.sectionSeperator).join('\\.')
     var section = (opt.section ? opt.section + '.' : '') + nk
     var child = encode(obj[k], {
       section: section,
       whitespace: opt.whitespace,
-      isArray: opt.isArray
+      isArray: opt.isArray,
+      unsafe: opt.unsafe,
+      sectionSeperator: opt.sectionSeperator
     })
     if (out.length && child.length) {
       out += eol
@@ -62,16 +69,37 @@ function encode (obj, opt) {
   return out
 }
 
-function dotSplit (str) {
-  return str.replace(/\1/g, '\u0002LITERAL\\1LITERAL\u0002')
-    .replace(/\\\./g, '\u0001')
-    .split(/\./).map(function (part) {
-      return part.replace(/\1/g, '\\.')
-        .replace(/\2LITERAL\\1LITERAL\2/g, '\u0001')
-    })
+function splitSections (str, separator) {
+  var lastMatchIndex = 0
+  var lastSeparatorIndex = 0
+  var nextIndex = 0
+  var sections = []
+
+  do {
+    nextIndex = str.indexOf(separator, lastMatchIndex)
+
+    if (nextIndex !== -1) {
+      lastMatchIndex = nextIndex + separator.length
+
+      if (nextIndex > 0 && str[nextIndex - 1] === '\\') {
+        continue
+      }
+
+      sections.push(str.slice(lastSeparatorIndex, nextIndex))
+      lastSeparatorIndex = nextIndex + separator.length
+    }
+  } while (nextIndex !== -1)
+
+  sections.push(str.slice(lastSeparatorIndex))
+
+  return sections
 }
 
-function decode (str) {
+function decode (str, opt) {
+  opt = opt || {}
+  opt.stripQuotes = opt.hasOwnProperty('stripQuotes') ? opt.stripQuotes : true
+  opt.sectionSeperator = opt.hasOwnProperty('sectionSeperator') ? opt.sectionSeperator : '*'
+
   var out = {}
   var p = out
   var section = null
@@ -88,7 +116,7 @@ function decode (str) {
       return
     }
     var key = unsafe(match[2])
-    var value = match[3] ? unsafe(match[4]) : true
+    var value = match[3] ? unsafe(match[4], opt.stripQuotes) : true
     switch (value) {
       case 'true':
       case 'false':
@@ -130,7 +158,7 @@ function decode (str) {
     }
     // see if the parent section is also an object.
     // if so, add it to that, and mark this one for deletion
-    var parts = dotSplit(k)
+    var parts = splitSections(k, opt.sectionSeperator)
     var p = out
     var l = parts.pop()
     var nl = l.replace(/\\\./g, '.')
@@ -166,14 +194,26 @@ function safe (val) {
     : val.replace(/;/g, '\\;').replace(/#/g, '\\#')
 }
 
-function unsafe (val, doUnesc) {
+function safeVal (val) {
+  return typeof val !== 'string' ||
+    val.match(/[\r\n]/) ||
+    val.match(/^\[/) ||
+    (val.length > 1 && isQuoted(val)) ||
+    val !== val.trim()
+    ? JSON.stringify(val)
+    : val.replace(/;/g, '\\;').replace(/#/g, '\\#')
+}
+
+function unsafe (val, stripQuotes = true) {
   val = (val || '').trim()
   if (isQuoted(val)) {
     // remove the single quotes before calling JSON.parse
     if (val.charAt(0) === "'") {
       val = val.substr(1, val.length - 2)
     }
-    try { val = JSON.parse(val) } catch (_) {}
+    if (stripQuotes) {
+      try { val = JSON.parse(val) } catch (_) {}
+    }
   } else {
     // walk the val to find the first not-escaped ; character
     var esc = false
